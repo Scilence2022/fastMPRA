@@ -107,6 +107,9 @@ typedef struct {
 static int n_threads = DEFAULT_THREADS;
 static int g_k = 41;  // Default k-mer size
 
+// Add global mutex
+static pthread_mutex_t output_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 // Function prototypes
 
 char* extract_kmer(const char* seq, int position, int k, int direction);
@@ -701,7 +704,7 @@ void process_reads(void *_data, long i, int tid) {
         }
 
         // Output the results
-        output_results(pair, best_design, is_reverse);
+        // output_results(pair, best_design, is_reverse);
     } else {
         // No matching design found
         // Handle as needed (e.g., output a message or skip)
@@ -844,19 +847,10 @@ void free_read(read_t *r) {
 // Function to process zones of a design
 int process_zones(const char *assembled_seq, int assembled_length, int k, design_t *design) {
     int zone_found = 0;
-    // printf("\nProcessing zones:\n");
-    // printf("Assembled sequence: %s\n", assembled_seq);
-    // printf("\nZone information:\n");
-    // for (int i = 0; i < design->zones.count; i++) {
-    //     zone_t *zone = &design->zones.zones[i];
-    //     printf("Zone %d:\n", i);
-    //     printf("  Name: %s\n", zone->name);
-    //     printf("  Start: %d\n", zone->start);
-    //     printf("  End: %d\n", zone->end);
-    //     printf("  Left k-mer: %s\n", zone->left_kmer);
-    //     printf("  Right k-mer: %s\n", zone->right_kmer);
-    // }
-
+    
+    // Prepare output buffer
+    char output_buffer[MAX_LINE * 2] = "";  // Make sure MAX_LINE is defined appropriately
+    
     for (int i = 0; i < design->zones.count; i++) {
         zone_t *zone = &design->zones.zones[i];
         // 使用实际的kmer长度
@@ -888,8 +882,12 @@ int process_zones(const char *assembled_seq, int assembled_length, int k, design
                     right_found = '+';
                 }
 
-                // Output result
-                printf("%s\t%s\t%s\t%c\t%c\t", design->label, zone->name, zone_seq, left_found, right_found);
+                // Instead of printf, use snprintf to write to buffer
+                char temp_buffer[MAX_LINE];
+                snprintf(temp_buffer, sizeof(temp_buffer), "%s\t%s\t%s\t%c\t%c\t", 
+                        design->label, zone->name, zone_seq, left_found, right_found);
+                strcat(output_buffer, temp_buffer);
+                
                 free(zone_seq);
                 zone_found = 1;
             }
@@ -908,8 +906,12 @@ int process_zones(const char *assembled_seq, int assembled_length, int k, design
                     strncpy(zone_seq, assembled_seq + zone_seq_start - 1, zone_seq_end - zone_seq_start+1);
                     zone_seq[zone_seq_end - zone_seq_start+1] = '\0';
 
-                    // Output result
-                    printf("%s\t%s\t%s\t%c\t%c\t", design->label, zone->name, zone_seq, left_found, right_found);
+                    // Use snprintf here too
+                    char temp_buffer[MAX_LINE];
+                    snprintf(temp_buffer, sizeof(temp_buffer), "%s\t%s\t%s\t%c\t%c\t", 
+                            design->label, zone->name, zone_seq, left_found, right_found);
+                    strcat(output_buffer, temp_buffer);
+                    
                     free(zone_seq);
                     zone_found = 1;
                 }
@@ -917,7 +919,13 @@ int process_zones(const char *assembled_seq, int assembled_length, int k, design
         }
     }
 
-    printf("\n");
+    // Output all results at once with mutex protection
+    if (output_buffer[0] != '\0') {
+        pthread_mutex_lock(&output_mutex);
+        printf("%s\n", output_buffer);
+        pthread_mutex_unlock(&output_mutex);
+    }
+
     return zone_found;
 }
 
@@ -1037,6 +1045,9 @@ int main(int argc, char *argv[]) {
 
     // Clean up designs
     free_designs_array(&config.designs);
+
+    // Destroy the output mutex
+    pthread_mutex_destroy(&output_mutex);
 
     return 0;
 }
