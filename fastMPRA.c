@@ -844,18 +844,18 @@ void free_read(read_t *r) {
 // Function to process zones of a design
 int process_zones(const char *assembled_seq, int assembled_length, int k, design_t *design) {
     int zone_found = 0;
-    printf("\nProcessing zones:\n");
-    printf("Assembled sequence: %s\n", assembled_seq);
-    printf("\nZone information:\n");
-    for (int i = 0; i < design->zones.count; i++) {
-        zone_t *zone = &design->zones.zones[i];
-        printf("Zone %d:\n", i);
-        printf("  Name: %s\n", zone->name);
-        printf("  Start: %d\n", zone->start);
-        printf("  End: %d\n", zone->end);
-        printf("  Left k-mer: %s\n", zone->left_kmer);
-        printf("  Right k-mer: %s\n", zone->right_kmer);
-    }
+    // printf("\nProcessing zones:\n");
+    // printf("Assembled sequence: %s\n", assembled_seq);
+    // printf("\nZone information:\n");
+    // for (int i = 0; i < design->zones.count; i++) {
+    //     zone_t *zone = &design->zones.zones[i];
+    //     printf("Zone %d:\n", i);
+    //     printf("  Name: %s\n", zone->name);
+    //     printf("  Start: %d\n", zone->start);
+    //     printf("  End: %d\n", zone->end);
+    //     printf("  Left k-mer: %s\n", zone->left_kmer);
+    //     printf("  Right k-mer: %s\n", zone->right_kmer);
+    // }
 
     for (int i = 0; i < design->zones.count; i++) {
         zone_t *zone = &design->zones.zones[i];
@@ -876,13 +876,15 @@ int process_zones(const char *assembled_seq, int assembled_length, int k, design
             if (zone_seq_end <= assembled_length) {
                 // Extract zone sequence
                 char *zone_seq = (char *)malloc((zone_seq_end - zone_seq_start + 2) * sizeof(char));
-                strncpy(zone_seq, assembled_seq + zone_seq_start, zone_seq_end - zone_seq_start+1);
+                strncpy(zone_seq, assembled_seq + zone_seq_start, zone_seq_end - zone_seq_start + 1);
                 zone_seq[zone_seq_end - zone_seq_start+1] = '\0';
 
                 // Check right k-mer
                 right_pos = find_str_position(assembled_seq, assembled_length, 
                                             zone->right_kmer, right_kmer_len, zone_seq_end);
-                if (right_pos == zone_seq_end) {
+                // if (right_pos == zone_seq_end) {
+                //to be deal with indels in the zone_seq Lifu Song 20241103
+                if (right_pos > zone_seq_start) {
                     right_found = '+';
                 }
 
@@ -903,7 +905,7 @@ int process_zones(const char *assembled_seq, int assembled_length, int k, design
                 if (zone_seq_start >= 0) {
                     // Extract zone sequence
                     char *zone_seq = (char *)malloc((zone_seq_end - zone_seq_start + 2) * sizeof(char));
-                    strncpy(zone_seq, assembled_seq + zone_seq_start, zone_seq_end - zone_seq_start+1);
+                    strncpy(zone_seq, assembled_seq + zone_seq_start - 1, zone_seq_end - zone_seq_start+1);
                     zone_seq[zone_seq_end - zone_seq_start+1] = '\0';
 
                     // Output result
@@ -1047,7 +1049,7 @@ char* extract_kmer(const char* seq, int position, int k, int direction) {
             free(kmer);
             return NULL;
         }
-        strncpy(kmer, seq + position - k, k);
+        strncpy(kmer, seq + position - k - 1, k);
     } else {
         // Extract k bases to the right
         int seq_len = strlen(seq);
