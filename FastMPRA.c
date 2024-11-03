@@ -130,7 +130,7 @@ void compute_kmer_set(const char *seq, int k, kmer_set_t *kmer_set);
 int kmer_in_set(kmer_set_t *kmer_set, const char *kmer);
 void free_kmer_set(kmer_set_t *kmer_set);
 char* concatenate_reads(const char* seq1, const char* seq2);
-int find_kmer_position(const char* seq, int seq_len, const char* kmer, int k, int start_pos);
+int find_str_position(const char* seq, int seq_len, const char* kmer, int k, int start_pos);
 void output_results(read_pair_t *pair, design_t *design, int is_reverse);
 void init_read(read_t *r);
 void free_read(read_t *r);
@@ -473,6 +473,27 @@ void compute_kmer_set(const char *seq, int k, kmer_set_t *kmer_set) {
             // The kmer was already in the set
             free(kmer);
         }
+        
+        // Reverse complement k-mer
+        char *rc_kmer = (char *)malloc(k + 1);
+        for (int j = 0; j < k; j++) {
+            char base = kmer[k-1-j];
+            switch(base) {
+                case 'A': rc_kmer[j] = 'T'; break;
+                case 'T': rc_kmer[j] = 'A'; break;
+                case 'C': rc_kmer[j] = 'G'; break;
+                case 'G': rc_kmer[j] = 'C'; break;
+                default: rc_kmer[j] = 'N';
+            }
+        }
+        rc_kmer[k] = '\0';
+        
+        // Add reverse complement k-mer
+        iter = kh_put(str, kmer_set->set, rc_kmer, &ret);
+        if (!ret) {
+            // The rc_kmer was already in the set
+            free(rc_kmer);
+        }
     }
 }
 
@@ -510,7 +531,7 @@ float compute_jaccard_index(kmer_set_t *set1, kmer_set_t *set2) {
     int union_count = 0;
     
     // Debug output
-    printf("Set sizes - Set1: %d, Set2: %d\n", kh_size(set1->set), kh_size(set2->set));
+    // printf("Set sizes - Set1: %d, Set2: %d\n", kh_size(set1->set), kh_size(set2->set));
 
     // Count intersection and first part of union
     for (khiter_t k = kh_begin(set1->set); k != kh_end(set1->set); ++k) {
@@ -534,7 +555,7 @@ float compute_jaccard_index(kmer_set_t *set1, kmer_set_t *set2) {
     }
 
     // Debug output
-    printf("Intersection: %d, Union: %d\n", intersection, union_count);
+    // printf("Intersection: %d, Union: %d\n", intersection, union_count);
 
     if (union_count == 0) return 0.0;
     return (float)intersection / union_count;
@@ -572,12 +593,24 @@ char* concatenate_reads(const char* seq1, const char* seq2) {
 }
 
 // Function to find kmer position in a sequence
-int find_kmer_position(const char* seq, int seq_len, const char* kmer, int k, int start_pos) {
-    for (int i = start_pos; i <= seq_len - k; i++) {
-        if (strncmp(seq + i, kmer, k) == 0) {
+int find_str_position(const char* seq, int seq_len, const char* kmer, int k, int start_pos) {
+    // Calculate k from kmer length
+    int kmer_len = strlen(kmer);
+    
+    // printf("Finding kmer position:\n");
+    // printf("Sequence: %s\n", seq);
+    // printf("K-mer: %s\n", kmer);
+    // printf("K-mer length: %d\n", kmer_len);
+    // printf("Start position: %d\n", start_pos);
+    
+    for (int i = start_pos; i <= seq_len - kmer_len; i++) {
+        if (strncmp(seq + i, kmer, kmer_len) == 0) {
+            // printf("Found match at position %d\n", i);
             return i;
         }
     }
+    
+    // printf("No match found\n");
     return -1;
 }
 
@@ -585,6 +618,7 @@ int find_kmer_position(const char* seq, int seq_len, const char* kmer, int k, in
 void process_reads(void *_data, long i, int tid) {
     process_batch_t *data = (process_batch_t*)_data;
     read_pair_t *pair = &data->pairs[i];
+    // fprintf(stderr, "\n=== Processing read %s ===\n", pair->r1.name);
 
     char *assembled_seq = NULL;
     int assembled_length = 0;
@@ -616,53 +650,37 @@ void process_reads(void *_data, long i, int tid) {
     kmer_set_t read_kmers;
     
     // Print assembled sequence
-    printf("Assembled sequence: %s\n", assembled_seq);
-    printf("Assembled length: %d\n", (int)strlen(assembled_seq));
+    // fprintf(stderr, "Warning: Assembled sequence: %s\n", assembled_seq);
+    // fprintf(stderr, "Warning: Assembled length: %d\n", (int)strlen(assembled_seq));
     
     init_kmer_set(&read_kmers);
     compute_kmer_set(assembled_seq, data->k, &read_kmers);
 
-    printf("k-mer size: %d\n", data->k);
-
-    printf("\nComparing with designs:\n");
-
-    // printf("\nRead k-mers:\n");
-    // for (khiter_t k = kh_begin(read_kmers.set); k != kh_end(read_kmers.set); ++k) {
-    //     if (kh_exist(read_kmers.set, k)) {
-    //         printf("  %s\n", kh_key(read_kmers.set, k));
-    //     }
-    // }
-    printf("Number of designs: %d\n", data->designs->count);
+    // fprintf(stderr, "Warning: k-mer size: %d\n", data->k);
+    // fprintf(stderr, "\nWarning: Comparing with designs:\n");
+    // fprintf(stderr, "Warning: Number of designs: %d\n", data->designs->count);
 
     for (int d = 0; d < data->designs->count; d++) {
         float jaccard = compute_jaccard_index(&read_kmers, &data->designs->designs[d].kmer_set);
-
-        // printf("\nDesign k-mers:\n");
-        // for (khiter_t k = kh_begin(data->designs->designs[d].kmer_set.set); k != kh_end(data->designs->designs[d].kmer_set.set); ++k) {
-        //     if (kh_exist(data->designs->designs[d].kmer_set.set, k)) {
-        //         printf("  %s\n", kh_key(data->designs->designs[d].kmer_set.set, k));
-        //     }
-        // }
         
-        printf("Design %d (%s):\n", d, data->designs->designs[d].label);
-        printf("  - Sequence: %s\n", data->designs->designs[d].seq);
-        printf("  - Jaccard Index: %.4f\n", jaccard);
+        // fprintf(stderr, "Warning: Design %d (%s):\n", d, data->designs->designs[d].label);
+        // fprintf(stderr, "Warning:   - Sequence: %s\n", data->designs->designs[d].seq);
+        // fprintf(stderr, "Warning:   - Jaccard Index: %.4f\n", jaccard);
         
         if (jaccard > best_jaccard) {
             best_jaccard = jaccard;
             best_design_index = d;
-            printf("  -> New best match!\n");
         }
     }
     
-    if (best_design_index >= 0) {
-        printf("\nBest matching design: %d (%s)\n", 
-               best_design_index, 
-               data->designs->designs[best_design_index].label);
-        printf("Final Jaccard Index: %.4f\n", best_jaccard);
-    } else {
-        printf("\nNo matching design found\n");
-    }
+    // if (best_design_index >= 0) {
+    //     fprintf(stderr, "\nWarning: Best matching design: %d (%s)\n", 
+    //            best_design_index, 
+    //            data->designs->designs[best_design_index].label);
+    //     fprintf(stderr, "Warning: Final Jaccard Index: %.4f\n", best_jaccard);
+    // } else {
+    //     fprintf(stderr, "\nWarning: No matching design found\n");
+    // }
 
     if (best_design_index >= 0) {
         // Process the zones of the best matching design
@@ -826,26 +844,44 @@ void free_read(read_t *r) {
 // Function to process zones of a design
 int process_zones(const char *assembled_seq, int assembled_length, int k, design_t *design) {
     int zone_found = 0;
+    printf("\nProcessing zones:\n");
+    printf("Assembled sequence: %s\n", assembled_seq);
+    printf("\nZone information:\n");
+    for (int i = 0; i < design->zones.count; i++) {
+        zone_t *zone = &design->zones.zones[i];
+        printf("Zone %d:\n", i);
+        printf("  Name: %s\n", zone->name);
+        printf("  Start: %d\n", zone->start);
+        printf("  End: %d\n", zone->end);
+        printf("  Left k-mer: %s\n", zone->left_kmer);
+        printf("  Right k-mer: %s\n", zone->right_kmer);
+    }
 
     for (int i = 0; i < design->zones.count; i++) {
         zone_t *zone = &design->zones.zones[i];
-        int left_pos = find_kmer_position(assembled_seq, assembled_length, zone->left_kmer, k, 0);
+        // 使用实际的kmer长度
+        int left_kmer_len = strlen(zone->left_kmer);
+        int right_kmer_len = strlen(zone->right_kmer);
+        
+        int left_pos = find_str_position(assembled_seq, assembled_length, 
+                                       zone->left_kmer, left_kmer_len, 0);
         int right_pos = -1;
         char left_found = '-';
         char right_found = '-';
 
         if (left_pos >= 0) {
             left_found = '+';
-            int zone_seq_start = left_pos + k;
+            int zone_seq_start = left_pos + left_kmer_len;  // 使用left_kmer_len
             int zone_seq_end = zone_seq_start + (zone->end - zone->start);
             if (zone_seq_end <= assembled_length) {
                 // Extract zone sequence
-                char *zone_seq = (char *)malloc((zone_seq_end - zone_seq_start + 1) * sizeof(char));
-                strncpy(zone_seq, assembled_seq + zone_seq_start, zone_seq_end - zone_seq_start);
-                zone_seq[zone_seq_end - zone_seq_start] = '\0';
+                char *zone_seq = (char *)malloc((zone_seq_end - zone_seq_start + 2) * sizeof(char));
+                strncpy(zone_seq, assembled_seq + zone_seq_start, zone_seq_end - zone_seq_start+1);
+                zone_seq[zone_seq_end - zone_seq_start+1] = '\0';
 
                 // Check right k-mer
-                right_pos = find_kmer_position(assembled_seq, assembled_length, zone->right_kmer, k, zone_seq_end);
+                right_pos = find_str_position(assembled_seq, assembled_length, 
+                                            zone->right_kmer, right_kmer_len, zone_seq_end);
                 if (right_pos == zone_seq_end) {
                     right_found = '+';
                 }
@@ -857,16 +893,18 @@ int process_zones(const char *assembled_seq, int assembled_length, int k, design
             }
         } else {
             // Try finding right k-mer
-            right_pos = find_kmer_position(assembled_seq, assembled_length, zone->right_kmer, k, 0);
+            right_pos = find_str_position(assembled_seq, assembled_length, 
+                                        zone->right_kmer, right_kmer_len, 0);
+            // printf("Right k-mer position: %d\n", right_pos);
             if (right_pos >= 0) {
                 right_found = '+';
                 int zone_seq_end = right_pos;
                 int zone_seq_start = zone_seq_end - (zone->end - zone->start);
                 if (zone_seq_start >= 0) {
                     // Extract zone sequence
-                    char *zone_seq = (char *)malloc((zone_seq_end - zone_seq_start + 1) * sizeof(char));
-                    strncpy(zone_seq, assembled_seq + zone_seq_start, zone_seq_end - zone_seq_start);
-                    zone_seq[zone_seq_end - zone_seq_start] = '\0';
+                    char *zone_seq = (char *)malloc((zone_seq_end - zone_seq_start + 2) * sizeof(char));
+                    strncpy(zone_seq, assembled_seq + zone_seq_start, zone_seq_end - zone_seq_start+1);
+                    zone_seq[zone_seq_end - zone_seq_start+1] = '\0';
 
                     // Output result
                     printf("%s\t%s\t%s\t%c\t%c\t", design->label, zone->name, zone_seq, left_found, right_found);
