@@ -455,10 +455,18 @@ void init_kmer_set(kmer_set_t *kmer_set) {
 // Compute kmer set from a sequence
 void compute_kmer_set(const char *seq, int k, kmer_set_t *kmer_set) {
     int seq_len = strlen(seq);
+    if (seq_len < k) return;  // Add length check
+    
     for (int i = 0; i <= seq_len - k; i++) {
         char *kmer = (char *)malloc(k + 1);
         strncpy(kmer, seq + i, k);
         kmer[k] = '\0';
+        
+        // Convert k-mer to uppercase for consistent comparison
+        for (int j = 0; j < k; j++) {
+            kmer[j] = toupper(kmer[j]);
+        }
+        
         int ret;
         khiter_t iter = kh_put(str, kmer_set->set, kmer, &ret);
         if (!ret) {
@@ -470,8 +478,17 @@ void compute_kmer_set(const char *seq, int k, kmer_set_t *kmer_set) {
 
 // Check if kmer is in set
 int kmer_in_set(kmer_set_t *kmer_set, const char *kmer) {
-    khiter_t iter = kh_get(str, kmer_set->set, kmer);
-    return (iter != kh_end(kmer_set->set));
+    // Create temporary uppercase version of kmer for comparison
+    char *upper_kmer = strdup(kmer);
+    for (int i = 0; upper_kmer[i]; i++) {
+        upper_kmer[i] = toupper(upper_kmer[i]);
+    }
+    
+    khiter_t iter = kh_get(str, kmer_set->set, upper_kmer);
+    int result = (iter != kh_end(kmer_set->set));
+    
+    free(upper_kmer);
+    return result;
 }
 
 // Free kmer set
@@ -491,26 +508,33 @@ void free_kmer_set(kmer_set_t *kmer_set) {
 float compute_jaccard_index(kmer_set_t *set1, kmer_set_t *set2) {
     int intersection = 0;
     int union_count = 0;
+    
+    // Debug output
+    printf("Set sizes - Set1: %d, Set2: %d\n", kh_size(set1->set), kh_size(set2->set));
 
-    khiter_t k;
-    for (k = kh_begin(set1->set); k != kh_end(set1->set); ++k) {
-        if (kh_exist(set1->set, k)) {
-            const char *kmer = kh_key(set1->set, k);
-            if (kmer_in_set(set2, kmer)) {
-                intersection++;
-            }
+    // Count intersection and first part of union
+    for (khiter_t k = kh_begin(set1->set); k != kh_end(set1->set); ++k) {
+        if (!kh_exist(set1->set, k)) continue;
+        
+        const char *kmer = kh_key(set1->set, k);
+        if (kmer_in_set(set2, kmer)) {
+            intersection++;
+        }
+        union_count++;
+    }
+
+    // Add remaining elements from set2 to union
+    for (khiter_t k = kh_begin(set2->set); k != kh_end(set2->set); ++k) {
+        if (!kh_exist(set2->set, k)) continue;
+        
+        const char *kmer = kh_key(set2->set, k);
+        if (!kmer_in_set(set1, kmer)) {
             union_count++;
         }
     }
 
-    for (k = kh_begin(set2->set); k != kh_end(set2->set); ++k) {
-        if (kh_exist(set2->set, k)) {
-            const char *kmer = kh_key(set2->set, k);
-            if (!kmer_in_set(set1, kmer)) {
-                union_count++;
-            }
-        }
-    }
+    // Debug output
+    printf("Intersection: %d, Union: %d\n", intersection, union_count);
 
     if (union_count == 0) return 0.0;
     return (float)intersection / union_count;
@@ -598,9 +622,28 @@ void process_reads(void *_data, long i, int tid) {
     init_kmer_set(&read_kmers);
     compute_kmer_set(assembled_seq, data->k, &read_kmers);
 
+    printf("k-mer size: %d\n", data->k);
+
     printf("\nComparing with designs:\n");
+
+    // printf("\nRead k-mers:\n");
+    // for (khiter_t k = kh_begin(read_kmers.set); k != kh_end(read_kmers.set); ++k) {
+    //     if (kh_exist(read_kmers.set, k)) {
+    //         printf("  %s\n", kh_key(read_kmers.set, k));
+    //     }
+    // }
+    printf("Number of designs: %d\n", data->designs->count);
+
     for (int d = 0; d < data->designs->count; d++) {
         float jaccard = compute_jaccard_index(&read_kmers, &data->designs->designs[d].kmer_set);
+
+        // printf("\nDesign k-mers:\n");
+        // for (khiter_t k = kh_begin(data->designs->designs[d].kmer_set.set); k != kh_end(data->designs->designs[d].kmer_set.set); ++k) {
+        //     if (kh_exist(data->designs->designs[d].kmer_set.set, k)) {
+        //         printf("  %s\n", kh_key(data->designs->designs[d].kmer_set.set, k));
+        //     }
+        // }
+        
         printf("Design %d (%s):\n", d, data->designs->designs[d].label);
         printf("  - Sequence: %s\n", data->designs->designs[d].seq);
         printf("  - Jaccard Index: %.4f\n", jaccard);
@@ -871,7 +914,7 @@ int main(int argc, char *argv[]) {
     // Command line arguments override config file
     if (!fq1 && config.fq1[0] != '\0') fq1 = config.fq1;
     if (!fq2 && config.fq2[0] != '\0') fq2 = config.fq2;
-    if (g_k == 41) g_k = config.k;  // Only override if not set in command line
+    if (g_k == 31) g_k = config.k;  // Only override if not set in command line
     if (n_threads == DEFAULT_THREADS) n_threads = config.threads;
 
     if (!fq1) {
@@ -901,7 +944,7 @@ int main(int argc, char *argv[]) {
     process_batch_t batch = {
         .pairs = pairs,
         .n_pairs = 0,
-        .k = config.k,
+        .k = g_k,
         .is_pe = fq2 != NULL,
         .min_overlap = config.min_overlap,
         .max_mismatch_ratio = config.max_mismatch_ratio,
