@@ -3,8 +3,8 @@ CFLAGS = -Wall -O2
 INCLUDES = -I/usr/include/htslib -I.
 LIBS = -lhts -lz -lpthread
 
-FastMPRA: FastMPRA.c
+fastMPRA: fastMPRA.c
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $< $(LIBS)
 
 clean:
-	rm -f FastMPRA
+	rm -f fastMPRA
