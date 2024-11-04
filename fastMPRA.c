@@ -15,7 +15,7 @@ KHASH_SET_INIT_STR(str)
 KSEQ_INIT(gzFile, gzread)
 
 #define DEFAULT_THREADS 5
-#define DEFAULT_BLOCK_SIZE 100
+#define DEFAULT_BLOCK_SIZE 10000
 #define MAX_READ_LEN 1024
 #define MAX_LINE 1024
 
@@ -105,7 +105,7 @@ typedef struct {
 
 // Global variables for thread coordination
 static int n_threads = DEFAULT_THREADS;
-static int g_k = 41;  // Default k-mer size
+static int g_k = 31;  // Default k-mer size
 
 // Add global mutex
 static pthread_mutex_t output_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -162,7 +162,7 @@ int str_equals(const char* str1, const char* str2) {
 
 // Function to initialize default configuration
 void init_default_config(config_t* config) {
-    config->k = 41;
+    config->k = 31;
     config->threads = DEFAULT_THREADS;
     config->min_overlap = 12;
     config->max_mismatch_ratio = 0.1;
