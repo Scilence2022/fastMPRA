@@ -945,9 +945,32 @@ int main(int argc, char *argv[]) {
     char config_file[1024] = "config.ini";  // Default config file
     config_t config;
 
+    // Print usage if no arguments provided
+    if (argc == 1) {
+        fprintf(stderr, "Usage: %s [-h] [-c config.ini] [-1 <read1.fq>] [-2 <read2.fq>] [-k kmer_size] [-t threads]\n\n", argv[0]);
+        fprintf(stderr, "Options:\n");
+        fprintf(stderr, "  -h            Show this help message\n");
+        fprintf(stderr, "  -c <file>     Config file (default: config.ini)\n");
+        fprintf(stderr, "  -1 <file>     Input FASTQ file for read 1 (required)\n");
+        fprintf(stderr, "  -2 <file>     Input FASTQ file for read 2 (optional, for paired-end data)\n");
+        fprintf(stderr, "  -k <int>      K-mer size (default: 31)\n");
+        fprintf(stderr, "  -t <int>      Number of threads (default: 5)\n");
+        return 1;
+    }
+
     // Parse command line arguments
-    while ((c = getopt(argc, argv, "1:2:k:t:c:")) >= 0) {
+    while ((c = getopt(argc, argv, "h1:2:k:t:c:")) >= 0) {
         switch (c) {
+            case 'h':
+                fprintf(stderr, "Usage: %s [-h] [-c config.ini] [-1 <read1.fq>] [-2 <read2.fq>] [-k kmer_size] [-t threads]\n\n", argv[0]);
+                fprintf(stderr, "Options:\n");
+                fprintf(stderr, "  -h            Show this help message\n");
+                fprintf(stderr, "  -c <file>     Config file (default: config.ini)\n");
+                fprintf(stderr, "  -1 <file>     Input FASTQ file for read 1 (required)\n");
+                fprintf(stderr, "  -2 <file>     Input FASTQ file for read 2 (optional, for paired-end data)\n");
+                fprintf(stderr, "  -k <int>      K-mer size (default: 31)\n");
+                fprintf(stderr, "  -t <int>      Number of threads (default: 5)\n");
+                return 0;
             case '1': fq1 = optarg; break;
             case '2': fq2 = optarg; break;
             case 'k': g_k = atoi(optarg); break;
