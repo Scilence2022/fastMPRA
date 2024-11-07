@@ -110,6 +110,9 @@ static int g_k = 31;  // Default k-mer size
 // Add global mutex
 static pthread_mutex_t output_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+// Add at the top of the file with other global variables
+FILE* g_output_file = NULL;
+
 // Function prototypes
 
 char* extract_kmer(const char* seq, int position, int k, int direction);
@@ -922,7 +925,11 @@ int process_zones(const char *assembled_seq, int assembled_length, int k, design
     // Output all results at once with mutex protection
     if (output_buffer[0] != '\0') {
         pthread_mutex_lock(&output_mutex);
-        printf("%s\n", output_buffer);
+        if (g_output_file) {
+            fprintf(g_output_file, "%s\n", output_buffer);
+        } else {
+            printf("%s\n", output_buffer);
+        }
         pthread_mutex_unlock(&output_mutex);
     }
 
@@ -942,12 +949,13 @@ void output_results(read_pair_t *pair, design_t *design, int is_reverse) {
 int main(int argc, char *argv[]) {
     int c;
     char *fq1 = NULL, *fq2 = NULL;
-    char config_file[1024] = "config.ini";  // Default config file
+    char *output_file = NULL;
+    char config_file[1024] = "config.ini";
     config_t config;
 
     // Print usage if no arguments provided
     if (argc == 1) {
-        fprintf(stderr, "Usage: %s [-h] [-c config.ini] [-1 <read1.fq>] [-2 <read2.fq>] [-k kmer_size] [-t threads]\n\n", argv[0]);
+        fprintf(stderr, "Usage: %s [-h] [-c config.ini] [-1 <read1.fq>] [-2 <read2.fq>] [-k kmer_size] [-t threads] [-o output]\n\n", argv[0]);
         fprintf(stderr, "Options:\n");
         fprintf(stderr, "  -h            Show this help message\n");
         fprintf(stderr, "  -c <file>     Config file (default: config.ini)\n");
@@ -955,14 +963,15 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "  -2 <file>     Input FASTQ file for read 2 (optional, for paired-end data)\n");
         fprintf(stderr, "  -k <int>      K-mer size (default: 31)\n");
         fprintf(stderr, "  -t <int>      Number of threads (default: 5)\n");
+        fprintf(stderr, "  -o <file>     Output file (default: stdout)\n");
         return 1;
     }
 
     // Parse command line arguments
-    while ((c = getopt(argc, argv, "h1:2:k:t:c:")) >= 0) {
+    while ((c = getopt(argc, argv, "h1:2:k:t:c:o:")) >= 0) {
         switch (c) {
             case 'h':
-                fprintf(stderr, "Usage: %s [-h] [-c config.ini] [-1 <read1.fq>] [-2 <read2.fq>] [-k kmer_size] [-t threads]\n\n", argv[0]);
+                fprintf(stderr, "Usage: %s [-h] [-c config.ini] [-1 <read1.fq>] [-2 <read2.fq>] [-k kmer_size] [-t threads] [-o output]\n\n", argv[0]);
                 fprintf(stderr, "Options:\n");
                 fprintf(stderr, "  -h            Show this help message\n");
                 fprintf(stderr, "  -c <file>     Config file (default: config.ini)\n");
@@ -970,12 +979,14 @@ int main(int argc, char *argv[]) {
                 fprintf(stderr, "  -2 <file>     Input FASTQ file for read 2 (optional, for paired-end data)\n");
                 fprintf(stderr, "  -k <int>      K-mer size (default: 31)\n");
                 fprintf(stderr, "  -t <int>      Number of threads (default: 5)\n");
+                fprintf(stderr, "  -o <file>     Output file (default: stdout)\n");
                 return 0;
             case '1': fq1 = optarg; break;
             case '2': fq2 = optarg; break;
             case 'k': g_k = atoi(optarg); break;
             case 't': n_threads = atoi(optarg); break;
             case 'c': strncpy(config_file, optarg, sizeof(config_file) - 1); break;
+            case 'o': output_file = optarg; break;
         }
     }
 
@@ -989,7 +1000,7 @@ int main(int argc, char *argv[]) {
     if (n_threads == DEFAULT_THREADS) n_threads = config.threads;
 
     if (!fq1) {
-        fprintf(stderr, "Usage: %s [-c config.ini] [-1 <read1.fq>] [-2 <read2.fq>] [-k kmer_size] [-t threads]\n", argv[0]);
+        fprintf(stderr, "Usage: %s [-c config.ini] [-1 <read1.fq>] [-2 <read2.fq>] [-k kmer_size] [-t threads] [-o output]\n", argv[0]);
         return 1;
     }
 
@@ -1021,6 +1032,17 @@ int main(int argc, char *argv[]) {
         .max_mismatch_ratio = config.max_mismatch_ratio,
         .designs = &config.designs  // Pass the designs
     };
+
+    // Open output file if specified
+    if (output_file) {
+        g_output_file = fopen(output_file, "w");
+        if (!g_output_file) {
+            fprintf(stderr, "Error opening output file %s\n", output_file);
+            return 1;
+        }
+    } else {
+        g_output_file = stdout;
+    }
 
     while (1) {
         batch.n_pairs = 0;
@@ -1068,6 +1090,11 @@ int main(int argc, char *argv[]) {
 
     // Clean up designs
     free_designs_array(&config.designs);
+
+    // Clean up output file
+    if (g_output_file && g_output_file != stdout) {
+        fclose(g_output_file);
+    }
 
     // Destroy the output mutex
     pthread_mutex_destroy(&output_mutex);
