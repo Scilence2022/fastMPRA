@@ -873,11 +873,15 @@ int process_zones(const char *assembled_seq, int assembled_length, int k, design
     int zone_found = 0;
     
     // Prepare output buffer
-    char output_buffer[MAX_LINE * 2] = "";  // Make sure MAX_LINE is defined appropriately
+    char output_buffer[MAX_LINE * 2] = "";  // Adjust size as needed
     
+    // Start with the design label
+    snprintf(output_buffer, sizeof(output_buffer), "%s", design->label);
+    
+    // Iterate over all zones
     for (int i = 0; i < design->zones.count; i++) {
         zone_t *zone = &design->zones.zones[i];
-        // 使用实际的kmer长度
+        // Use actual k-mer lengths
         int left_kmer_len = strlen(zone->left_kmer);
         int right_kmer_len = strlen(zone->right_kmer);
         
@@ -886,74 +890,69 @@ int process_zones(const char *assembled_seq, int assembled_length, int k, design
         int right_pos = -1;
         char left_found = '-';
         char right_found = '-';
+        char *zone_seq = NULL;
 
         if (left_pos >= 0) {
             left_found = '+';
-            int zone_seq_start = left_pos + left_kmer_len;  // 使用left_kmer_len
+            int zone_seq_start = left_pos + left_kmer_len;  // Use left_kmer_len
             int zone_seq_end = zone_seq_start + (zone->end - zone->start);
             if (zone_seq_end <= assembled_length) {
                 // Extract zone sequence
-                char *zone_seq = (char *)malloc((zone_seq_end - zone_seq_start + 2) * sizeof(char));
+                zone_seq = (char *)malloc((zone_seq_end - zone_seq_start + 2) * sizeof(char));
                 strncpy(zone_seq, assembled_seq + zone_seq_start, zone_seq_end - zone_seq_start + 1);
                 zone_seq[zone_seq_end - zone_seq_start+1] = '\0';
-
+                
                 // Check right k-mer
                 right_pos = find_str_position(assembled_seq, assembled_length, 
                                             zone->right_kmer, right_kmer_len, zone_seq_end);
-                // if (right_pos == zone_seq_end) {
-                //to be deal with indels in the zone_seq Lifu Song 20241103
                 if (right_pos > zone_seq_start) {
                     right_found = '+';
                 }
-
-                // Instead of printf, use snprintf to write to buffer
-                char temp_buffer[MAX_LINE];
-                snprintf(temp_buffer, sizeof(temp_buffer), "%s\t%s\t%s\t%c\t%c\t", 
-                        design->label, zone->name, zone_seq, left_found, right_found);
-                strcat(output_buffer, temp_buffer);
-                
-                free(zone_seq);
                 zone_found = 1;
             }
         } else {
             // Try finding right k-mer
             right_pos = find_str_position(assembled_seq, assembled_length, 
                                         zone->right_kmer, right_kmer_len, 0);
-            // printf("Right k-mer position: %d\n", right_pos);
             if (right_pos >= 0) {
                 right_found = '+';
                 int zone_seq_end = right_pos;
                 int zone_seq_start = zone_seq_end - (zone->end - zone->start);
                 if (zone_seq_start >= 0) {
                     // Extract zone sequence
-                    char *zone_seq = (char *)malloc((zone_seq_end - zone_seq_start + 2) * sizeof(char));
+                    zone_seq = (char *)malloc((zone_seq_end - zone_seq_start + 2) * sizeof(char));
                     strncpy(zone_seq, assembled_seq + zone_seq_start - 1, zone_seq_end - zone_seq_start+1);
                     zone_seq[zone_seq_end - zone_seq_start+1] = '\0';
-
-                    // Use snprintf here too
-                    char temp_buffer[MAX_LINE];
-                    snprintf(temp_buffer, sizeof(temp_buffer), "%s\t%s\t%s\t%c\t%c\t", 
-                            design->label, zone->name, zone_seq, left_found, right_found);
-                    strcat(output_buffer, temp_buffer);
                     
-                    free(zone_seq);
+                    left_found = '-';  // Left k-mer not found
                     zone_found = 1;
                 }
             }
         }
-    }
 
-    // Output all results at once with mutex protection
-    if (output_buffer[0] != '\0') {
-        pthread_mutex_lock(&output_mutex);
-        if (g_output_file) {
-            fprintf(g_output_file, "%s\n", output_buffer);
+        // Append zone information, even if zone_seq is NULL
+        char temp_buffer[MAX_LINE];
+        if (zone_seq) {
+            snprintf(temp_buffer, sizeof(temp_buffer), "\t%s\t%s\t%c\t%c", 
+                    zone->name, zone_seq, left_found, right_found);
+            free(zone_seq);
         } else {
-            printf("%s\n", output_buffer);
+            // Zone not found, output placeholders
+            snprintf(temp_buffer, sizeof(temp_buffer), "\t%s\t\t%c\t%c", 
+                    zone->name, left_found, right_found);
         }
-        pthread_mutex_unlock(&output_mutex);
+        strcat(output_buffer, temp_buffer);
     }
-
+    
+    // Output results (even if no zones were found, to maintain columns)
+    pthread_mutex_lock(&output_mutex);
+    if (g_output_file) {
+        fprintf(g_output_file, "%s\n", output_buffer);
+    } else {
+        printf("%s\n", output_buffer);
+    }
+    pthread_mutex_unlock(&output_mutex);
+    
     return zone_found;
 }
 
