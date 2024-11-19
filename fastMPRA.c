@@ -16,6 +16,7 @@ KSEQ_INIT(gzFile, gzread)
 
 #define DEFAULT_THREADS 5
 #define DEFAULT_BLOCK_SIZE 10000
+#define DEFAULT_KSZ 31
 #define MAX_READ_LEN 1024
 #define MAX_LINE 1024
 
@@ -105,7 +106,13 @@ typedef struct {
 
 // Global variables for thread coordination
 static int n_threads = DEFAULT_THREADS;
-static int g_k = 31;  // Default k-mer size
+static int g_k = DEFAULT_KSZ;  // Default k-mer size
+static int is_g_k_set = 0; // Tracks if overridden externally
+
+void set_g_k(int value) {
+    g_k = value;
+    is_g_k_set = 1; // Mark as externally set
+}
 
 // Add global mutex
 static pthread_mutex_t output_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -147,6 +154,10 @@ int pe_assemble(const char* read1_seq, const char* read1_qual,
                 int min_overlap, float max_mismatch_fraction,
                 char* merged_seq, char* merged_qual);
 
+
+
+
+
 // Function to trim whitespace
 char* trim(char* str) {
     char* end;
@@ -165,7 +176,12 @@ int str_equals(const char* str1, const char* str2) {
 
 // Function to initialize default configuration
 void init_default_config(config_t* config) {
-    config->k = 31;
+    if (!is_g_k_set) {
+        config->k = DEFAULT_KSZ; 
+    } else {
+        config->k = g_k;  // Update config with command line value
+    }
+    // config->k = DEFAULT_KSZ;
     config->threads = DEFAULT_THREADS;
     config->min_overlap = 12;
     config->max_mismatch_ratio = 0.1;
@@ -322,8 +338,12 @@ void load_config(const char* filename, config_t* config) {
         
         // 根据当前节段处理配置
         if (str_equals(current_section, "General")) {
-            if (str_equals(key, "k"))
-                config->k = atoi(value);
+            if (str_equals(key, "k")) {
+                if (!is_g_k_set) {
+                    g_k = atoi(value);  // Set global k value
+                    config->k = g_k;    // Update config with the same value
+                }
+            }
             else if (str_equals(key, "threads"))
                 config->threads = atoi(value);
             else if (str_equals(key, "min_overlap"))
@@ -399,7 +419,8 @@ void print_config(config_t* config) {
     printf("\n=== Configuration Settings ===\n");
     
     printf("\n[General]\n");
-    printf("k-mer size: %d\n", config->k);
+    printf("Global k-mer size: %d\n", g_k);
+    printf("Config k-mer size: %d\n", config->k);
     printf("Threads: %d\n", config->threads);
     printf("Minimum overlap: %d\n", config->min_overlap);
     printf("Maximum mismatch ratio: %.2f\n", config->max_mismatch_ratio);
@@ -961,7 +982,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "  -c <file>     Config file (default: config.ini)\n");
         fprintf(stderr, "  -1 <file>     Input FASTQ file for read 1 (required)\n");
         fprintf(stderr, "  -2 <file>     Input FASTQ file for read 2 (optional, for paired-end data)\n");
-        fprintf(stderr, "  -k <int>      K-mer size (default: 31)\n");
+        fprintf(stderr, "  -k <int>      K-mer size (default: %d)\n", DEFAULT_KSZ);
         fprintf(stderr, "  -t <int>      Number of threads (default: 5)\n");
         fprintf(stderr, "  -o <file>     Output file (default: stdout)\n");
         return 1;
@@ -977,13 +998,13 @@ int main(int argc, char *argv[]) {
                 fprintf(stderr, "  -c <file>     Config file (default: config.ini)\n");
                 fprintf(stderr, "  -1 <file>     Input FASTQ file for read 1 (required)\n");
                 fprintf(stderr, "  -2 <file>     Input FASTQ file for read 2 (optional, for paired-end data)\n");
-                fprintf(stderr, "  -k <int>      K-mer size (default: 31)\n");
+                fprintf(stderr, "  -k <int>      K-mer size (default: %d)\n", DEFAULT_KSZ);
                 fprintf(stderr, "  -t <int>      Number of threads (default: 5)\n");
                 fprintf(stderr, "  -o <file>     Output file (default: stdout)\n");
                 return 0;
             case '1': fq1 = optarg; break;
             case '2': fq2 = optarg; break;
-            case 'k': g_k = atoi(optarg); break;
+            case 'k': set_g_k(atoi(optarg)); break;
             case 't': n_threads = atoi(optarg); break;
             case 'c': strncpy(config_file, optarg, sizeof(config_file) - 1); break;
             case 'o': output_file = optarg; break;
@@ -996,7 +1017,10 @@ int main(int argc, char *argv[]) {
     // Command line arguments override config file
     if (!fq1 && config.fq1[0] != '\0') fq1 = config.fq1;
     if (!fq2 && config.fq2[0] != '\0') fq2 = config.fq2;
-    if (g_k == 31) g_k = config.k;  // Only override if not set in command line
+    if (!is_g_k_set) {
+        g_k = config.k;  // Only override if not set in command line
+    }
+    config.k = g_k;  // Always ensure config.k matches g_k
     if (n_threads == DEFAULT_THREADS) n_threads = config.threads;
 
     if (!fq1) {
