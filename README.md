@@ -22,7 +22,7 @@ fastMPRA is a high-performance tool for analyzing Massively Parallel Reporter As
 ### Building
 
 bash
-git clone https://github.com/yourusername/fastMPRA.git
+git clone https://github.com/Scilence2022/fastMPRA.git
 cd fastMPRA
 make
 
@@ -98,14 +98,14 @@ The tool uses multiple optimization strategies:
 
 ## Authors
 
-- Lifu Song
+- Lifu Song [songlf@tib.cas.cn]
 - Rongxing Wang
 - Mei Wang
 
 ## Contact
 
 For questions and support, please contact:
-- Email: songlf@tib.cas.cn
+- Email: [songlf@tib.cas.cn](mailto:songlf@tib.cas.cn)
 
 ## License
 
