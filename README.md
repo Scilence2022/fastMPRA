@@ -21,7 +21,7 @@ fastMPRA is a high-performance tool for analyzing Massively Parallel Reporter As
 
 ### Building
 
-bash
+```bash
 git clone https://github.com/Scilence2022/fastMPRA.git
 cd fastMPRA
 make
@@ -39,6 +39,7 @@ bash
 - `-2 <file>`: Input FASTQ file for read 2 (optional, for paired-end data)
 - `-k <int>`: K-mer size (default: 31)
 - `-t <int>`: Number of threads (default: 5)
+```
 
 ## Configuration File Format
 
