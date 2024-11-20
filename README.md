@@ -45,8 +45,10 @@ bash
 
 The program uses an INI-style configuration file. Here's an example:
 
+```ini
 ; FastMPRA-UH Configuration File
 ; 这是注释
+
 
 [General]
 k = 21                 
@@ -70,15 +72,18 @@ quality_threshold = 20
 [Design]
 label = DNA-design
 seq = ccaggggtccccaataattacgatttaaatttgacataataatacgactcactataggGCTATGGTTAGTTCCCACGTTccagctcccatgtaggcgtgcccaaacACCTTAGTAGGTACTACTACAACGTCGCACCGACTACGTTATAACGGGACGCCACAGAGACTTTGTTAAGGCCCGTGGTAAGAACAATTACCGATTACCCACCCCTTTACTGCCATGTGTGACATTAGCAAGAGTCCAATCCCCCCGAAAGCTTAGTCGGTTAGTCCCAGGCACTTC
+
 [ZONE]
 name = T7-pro
 start = 46
 end = 50
+
 [ZONE]
 name = UMI
 start = 80
 end = 106
 
+```
 
 ## Output Format
 
