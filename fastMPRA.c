@@ -15,7 +15,7 @@ KHASH_SET_INIT_STR(str)
 KSEQ_INIT(gzFile, gzread)
 
 #define DEFAULT_THREADS 5
-#define DEFAULT_BLOCK_SIZE 10000
+#define DEFAULT_BLOCK_SIZE 100000
 #define DEFAULT_KSZ 31
 #define MAX_READ_LEN 1024
 #define MAX_LINE 1024
@@ -496,9 +496,14 @@ void compute_kmer_set(const char *seq, int k, kmer_set_t *kmer_set) {
         
         int ret;
         khiter_t iter = kh_put(str, kmer_set->set, kmer, &ret);
-        if (!ret) {
+        if (ret < 0) {
+            // Error occurred
+            free(kmer);
+        } else if (ret == 0) {
             // The kmer was already in the set
             free(kmer);
+        } else {
+            // Successfully added new kmer
         }
         
         // Reverse complement k-mer
